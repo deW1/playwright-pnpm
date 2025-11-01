@@ -17,7 +17,11 @@ jobs:
       - name: Get current Playwright version from Dockerfile
         id: current
         run: |
-          CURRENT_VERSION=$(grep -oP 'FROM mcr.microsoft.com/playwright:v\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile)
+          # Try to extract from ARG first, fallback to FROM pattern for backwards compatibility
+          CURRENT_VERSION=$(grep -oP '(?<=ARG\s+PLAYWRIGHT_VERSION=)[0-9]+\.[0-9]+\.[0-9]+' Dockerfile || true)
+          if [ -z "$CURRENT_VERSION" ]; then
+            CURRENT_VERSION=$(grep -oP 'FROM mcr.microsoft.com/playwright:v\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile || true)
+          fi
           if [ -z "$CURRENT_VERSION" ]; then
             echo "Error: Could not extract current version from Dockerfile"
             exit 1
@@ -34,7 +38,7 @@ jobs:
             exit 1
           fi
           LATEST_VERSION=$(echo "$TAGS" | \
-            grep -oP '"v\K[0-9]+\.[0-9]+\.[0-9]+(?=")' | \
+            grep -oP '"v\K[0-9]+\.[0-9]+\.[0-9]+(?=\")' | \
             sort -t. -k1,1n -k2,2n -k3,3n | \
             tail -1)
           if [ -z "$LATEST_VERSION" ]; then
@@ -64,9 +68,13 @@ jobs:
         run: |
           CURRENT="${{ steps.current.outputs.version }}"
           LATEST="${{ steps.latest.outputs.version }}"
-          sed -i "s/playwright:v${CURRENT}/playwright:v${LATEST}/g" Dockerfile
+          if grep -qP '(?<=ARG\s+PLAYWRIGHT_VERSION=)[0-9]+\.[0-9]+\.[0-9]+' Dockerfile; then
+            sed -i "s/ARG PLAYWRIGHT_VERSION=${CURRENT}/ARG PLAYWRIGHT_VERSION=${LATEST}/g" Dockerfile
+          else
+            sed -i "s/playwright:v${CURRENT}/playwright:v${LATEST}/g" Dockerfile
+          fi
           echo "Updated Dockerfile:"
-          grep "FROM" Dockerfile
+          grep -E "^ARG|^FROM" Dockerfile
 
       - name: Create Pull Request
         if: steps.compare.outputs.update_needed == 'true'
@@ -76,10 +84,10 @@ jobs:
           commit-message: "Update Playwright to v${{ steps.latest.outputs.version }}"
           title: "Update Playwright to v${{ steps.latest.outputs.version }}"
           body: |
-            This PR updates the Playwright base image from v${{ steps.current.outputs.version }} to v${{ steps.latest.outputs.version }}.
+            This PR updates the Playwright base image version from v${{ steps.current.outputs.version }} to v${{ steps.latest.outputs.version }}.
 
             ## Changes
-            - Updated `FROM` statement in Dockerfile to use `mcr.microsoft.com/playwright:v${{ steps.latest.outputs.version }}`
+            - Updated `ARG PLAYWRIGHT_VERSION` in Dockerfile to use `${{ steps.latest.outputs.version }}`
 
             ## Notes
             - This PR was automatically created by the check-playwright-updates workflow
