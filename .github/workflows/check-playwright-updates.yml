@@ -41,12 +41,30 @@ jobs:
             sudo apt-get install -y jq
           fi
 
-          # Fetch tags from MCR (non-fatal on failure)
-          TAGS_JSON=$(curl -sf "https://mcr.microsoft.com/v2/playwright/tags/list" || true)
+          # Fetch tags from MCR with retry and exponential backoff (3 attempts)
+          max_attempts=3
+          attempt=1
+          TAGS_JSON=""
+          until [ $attempt -gt $max_attempts ]; do
+            echo "Fetching tags from MCR (attempt $attempt/$max_attempts)"
+            TAGS_JSON=$(curl -sf "https://mcr.microsoft.com/v2/playwright/tags/list" || true)
+            if [ -n "$TAGS_JSON" ]; then
+              break
+            fi
+            echo "Fetch attempt $attempt failed"
+            if [ $attempt -lt $max_attempts ]; then
+              # exponential backoff: sleep 2^attempt seconds
+              sleep_seconds=$((2 ** attempt))
+              echo "Retrying after ${sleep_seconds}s..."
+              sleep $sleep_seconds
+            fi
+            attempt=$((attempt + 1))
+          done
+
           if [ -z "$TAGS_JSON" ]; then
             echo "fetch_succeeded=false" >> $GITHUB_OUTPUT
             echo "version=" >> $GITHUB_OUTPUT
-            echo "Warning: Failed to fetch tags from Microsoft Container Registry; skipping update check for this run"
+            echo "Warning: Failed to fetch tags from Microsoft Container Registry after ${max_attempts} attempts; skipping update check for this run"
             exit 0
           fi
 
