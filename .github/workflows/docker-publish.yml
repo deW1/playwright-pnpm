@@ -30,7 +30,7 @@ jobs:
         id: playwright-version
         run: |
           # Prefer ARG if present, otherwise fall back to FROM
-          VERSION=$(grep -oP '(?<=ARG\s+PLAYWRIGHT_VERSION=)[0-9]+\.[0-9]+\.[0-9]+' Dockerfile || true)
+          VERSION=$(grep -oP 'ARG\s+PLAYWRIGHT_VERSION=\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile || true)
           if [ -z "$VERSION" ]; then
             VERSION=$(grep -oP 'FROM mcr.microsoft.com/playwright:v\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile || true)
           fi

@@ -18,7 +18,7 @@ jobs:
         id: current
         run: |
           # Try to extract from ARG first, fallback to FROM pattern for backwards compatibility
-          CURRENT_VERSION=$(grep -oP '(?<=ARG\s+PLAYWRIGHT_VERSION=)[0-9]+\.[0-9]+\.[0-9]+' Dockerfile || true)
+          CURRENT_VERSION=$(grep -oP 'ARG\s+PLAYWRIGHT_VERSION=\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile || true)
           if [ -z "$CURRENT_VERSION" ]; then
             CURRENT_VERSION=$(grep -oP 'FROM mcr.microsoft.com/playwright:v\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile || true)
           fi
@@ -112,7 +112,7 @@ jobs:
         run: |
           CURRENT="${{ steps.current.outputs.version }}"
           LATEST="${{ steps.latest.outputs.version }}"
-          if grep -qP '(?<=ARG\s+PLAYWRIGHT_VERSION=)[0-9]+\.[0-9]+\.[0-9]+' Dockerfile; then
+          if grep -qP 'ARG\s+PLAYWRIGHT_VERSION=\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile; then
             sed -i "s/ARG PLAYWRIGHT_VERSION=${CURRENT}/ARG PLAYWRIGHT_VERSION=${LATEST}/g" Dockerfile
           else
             sed -i "s/playwright:v${CURRENT}/playwright:v${LATEST}/g" Dockerfile
