@@ -43,9 +43,16 @@ Build the image yourself:
 docker build -t playwright-pnpm .
 ```
 
+## Available Tags
+
+- `latest` - Latest build from main branch
+- `pw-X.Y.Z` - Specific Playwright version (e.g., `pw-1.56.1`)
+
 ## Features
 
 - Based on official Playwright image (v1.56.1)
 - pnpm installed globally via corepack
 - Ready for use in CI/CD pipelines
 - Published to GitHub Container Registry
+- Automatically checks for new Playwright versions daily
+- Auto-creates PRs when new Playwright versions are available

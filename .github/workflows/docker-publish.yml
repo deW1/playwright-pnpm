@@ -26,6 +26,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Get Playwright version from Dockerfile
+        id: playwright-version
+        run: |
+          VERSION=$(grep -oP 'FROM mcr.microsoft.com/playwright:v\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Playwright version: $VERSION"
+
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -45,6 +52,7 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=pw-${{ steps.playwright-version.outputs.version }},enable={{is_default_branch}}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
