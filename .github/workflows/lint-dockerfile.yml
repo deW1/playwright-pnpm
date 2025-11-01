@@ -22,4 +22,55 @@ jobs:
       - name: Run hadolint on Dockerfile
         # Run hadolint via the official Docker image to lint the checked-out Dockerfile
         run: |
-          docker run --rm -i hadolint/hadolint:latest < Dockerfile
+          docker run --rm -i hadolint/hadolint:latest -f json < Dockerfile > hadolint.json || true
+
+      - name: Prepare hadolint summary
+        id: hadolint
+        run: |
+          # Count issues (jq is available on ubuntu runners)
+          if [ -s hadolint.json ]; then
+            ISSUES=$(jq 'length' hadolint.json || echo 0)
+          else
+            ISSUES=0
+          fi
+          echo "issues=$ISSUES" >> $GITHUB_OUTPUT
+
+          # Publish full JSON as a multiline output (beware size limits)
+          echo "report<<EOF" >> $GITHUB_OUTPUT
+          cat hadolint.json 2>/dev/null || true
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Comment hadolint results on PR
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          PR_NUMBER=${{ github.event.pull_request.number }}
+          REPO=${{ github.repository }}
+          TOKEN=${{ secrets.GITHUB_TOKEN }}
+          MARKER='<!-- hadolint-playwright-pnpm -->'
+
+          # Read issues count (prepared earlier)
+          ISSUES=${{ steps.hadolint.outputs.issues }}
+
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          BODY="${MARKER}\n\n## hadolint report\n\n- Issues found: ${ISSUES}\n\nSee the workflow run for details: ${RUN_URL}"
+
+          JSON_BODY=$(jq -n --arg body "$BODY" '{body: $body}')
+
+          # Try to find an existing comment containing the marker
+          EXISTING_ID=$(curl -s -H "Authorization: token $TOKEN" "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" | jq -r --arg marker "$MARKER" '.[] | select(.body|contains($marker)) | .id' | head -n1 || true)
+
+          if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
+            # Update existing comment
+            curl -s -X PATCH -H "Authorization: token $TOKEN" -H "Content-Type: application/json" -d "$JSON_BODY" "https://api.github.com/repos/$REPO/issues/comments/$EXISTING_ID" >/dev/null
+          else
+            # Create a new comment
+            curl -s -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" -d "$JSON_BODY" "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" >/dev/null
+          fi
+
+      - name: Fail on hadolint issues (pushes to main)
+        if: github.event_name == 'push' && steps.hadolint.outputs.issues != '0'
+        run: |
+          echo "Hadolint reported ${{ steps.hadolint.outputs.issues }} issues; failing the job."
+          exit 1

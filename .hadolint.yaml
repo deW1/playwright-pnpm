@@ -1,0 +1,16 @@
+# hadolint configuration for playwright-pnpm
+# Rules: https://github.com/hadolint/hadolint/wiki/Linter-rules
+# This config enables common best-practices and selectively ignores rules
+# that are intentionally not applicable for this image.
+
+# Example ignores (tweak as needed):
+# - DL3003 (Use WORKDIR to switch after COPY) sometimes not applicable in minimal images
+# - DL3008 (Pin versions in apt-get) may be noisy for base images maintained by upstream
+ignored:
+  - DL3003
+  - DL3008
+
+# Enable all default rules otherwise
+
+# You can add custom rules or overrides here. For more details, see:
+# https://github.com/hadolint/hadolint#configuration
