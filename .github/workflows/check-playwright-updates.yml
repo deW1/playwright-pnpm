@@ -1,0 +1,106 @@
+name: Check for Playwright Updates
+
+on:
+  schedule:
+    # Run daily at 00:00 UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-updates:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get current Playwright version from Dockerfile
+        id: current
+        run: |
+          CURRENT_VERSION=$(grep -oP 'FROM mcr.microsoft.com/playwright:v\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile)
+          
+          if [ -z "$CURRENT_VERSION" ]; then
+            echo "Error: Could not extract current version from Dockerfile"
+            exit 1
+          fi
+          
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Get latest Playwright version from MCR
+        id: latest
+        run: |
+          # Fetch tags from MCR with error handling
+          TAGS=$(curl -sf "https://mcr.microsoft.com/v2/playwright/tags/list" || echo "")
+          
+          if [ -z "$TAGS" ]; then
+            echo "Error: Failed to fetch tags from Microsoft Container Registry"
+            exit 1
+          fi
+          
+          # Extract stable version tags only (vX.Y.Z format, excluding pre-release tags)
+          LATEST_VERSION=$(echo "$TAGS" | \
+            grep -oP '"v\K[0-9]+\.[0-9]+\.[0-9]+(?=")' | \
+            sort -t. -k1,1n -k2,2n -k3,3n | \
+            tail -1)
+          
+          if [ -z "$LATEST_VERSION" ]; then
+            echo "Error: Could not determine latest version"
+            exit 1
+          fi
+          
+          echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
+          echo "Latest version: $LATEST_VERSION"
+
+      - name: Compare versions
+        id: compare
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          LATEST="${{ steps.latest.outputs.version }}"
+          
+          echo "Current: $CURRENT"
+          echo "Latest: $LATEST"
+          
+          if [ "$CURRENT" != "$LATEST" ]; then
+            echo "update_needed=true" >> $GITHUB_OUTPUT
+            echo "Update needed from $CURRENT to $LATEST"
+          else
+            echo "update_needed=false" >> $GITHUB_OUTPUT
+            echo "No update needed"
+          fi
+
+      - name: Update Dockerfile
+        if: steps.compare.outputs.update_needed == 'true'
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          LATEST="${{ steps.latest.outputs.version }}"
+          sed -i "s/playwright:v${CURRENT}/playwright:v${LATEST}/g" Dockerfile
+          
+          echo "Updated Dockerfile:"
+          grep "FROM" Dockerfile
+
+      - name: Create Pull Request
+        if: steps.compare.outputs.update_needed == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "Update Playwright to v${{ steps.latest.outputs.version }}"
+          title: "Update Playwright to v${{ steps.latest.outputs.version }}"
+          body: |
+            This PR updates the Playwright base image from v${{ steps.current.outputs.version }} to v${{ steps.latest.outputs.version }}.
+            
+            ## Changes
+            - Updated `FROM` statement in Dockerfile to use `mcr.microsoft.com/playwright:v${{ steps.latest.outputs.version }}`
+            
+            ## Notes
+            - This PR was automatically created by the check-playwright-updates workflow
+            - Once merged, the docker-publish workflow will build and push the new image to ghcr.io
+            
+            Please review and merge if the changes look correct.
+          branch: update-playwright-v${{ steps.latest.outputs.version }}
+          delete-branch: true
+          labels: |
+            dependencies
+            automated
