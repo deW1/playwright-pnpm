@@ -1,4 +1,4 @@
-name: Check for Playwright Updates
+name: "🔎 Check for Playwright Updates"
 on:
   schedule:
     - cron: '0 0 * * *'
@@ -14,7 +14,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Get current Playwright version from Dockerfile
+      - name: "🔧 Get current Playwright version from Dockerfile"
         id: current
         run: |
           # Try to extract from ARG first, fallback to FROM pattern for backwards compatibility
@@ -29,7 +29,7 @@ jobs:
           echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           echo "Current version: $CURRENT_VERSION"
 
-      - name: Get latest Playwright version from MCR
+      - name: "🌐 Get latest Playwright version from MCR"
         id: latest
         run: |
           set -euo pipefail
@@ -81,7 +81,7 @@ jobs:
           echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
           echo "Latest version: $LATEST_VERSION"
 
-      - name: Compare versions
+      - name: "🔁 Compare versions"
         id: compare
         run: |
           CURRENT="${{ steps.current.outputs.version }}"
@@ -107,7 +107,7 @@ jobs:
             echo "No update needed"
           fi
 
-      - name: Update Dockerfile
+      - name: "🛠️ Update Dockerfile"
         if: steps.compare.outputs.update_needed == 'true'
         run: |
           CURRENT="${{ steps.current.outputs.version }}"
@@ -152,10 +152,10 @@ jobs:
           UPDATE_NEEDED="${{ steps.compare.outputs.update_needed }}"
           echo "## Playwright update check" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Current: **$CURRENT**" >> $GITHUB_STEP_SUMMARY
-          echo "- Latest: **$LATEST**" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔁 Current: **$CURRENT**" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌐 Latest: **$LATEST**" >> $GITHUB_STEP_SUMMARY
           if [ "$UPDATE_NEEDED" = "true" ]; then
-            echo "- Update needed: **Yes**" >> $GITHUB_STEP_SUMMARY
+            echo "- ⚠️ Update needed: **Yes**" >> $GITHUB_STEP_SUMMARY
             PR_URL="${{ steps.create_pr.outputs.pull-request-url || '' }}"
             if [ -n "$PR_URL" ]; then
               echo "- Pull request created: ${PR_URL}" >> $GITHUB_STEP_SUMMARY
@@ -163,5 +163,5 @@ jobs:
               echo "- Pull request created: *(no URL available from create-pr step)*" >> $GITHUB_STEP_SUMMARY
             fi
           else
-            echo "- Update needed: **No**" >> $GITHUB_STEP_SUMMARY
+            echo "- ✅ Update needed: **No**" >> $GITHUB_STEP_SUMMARY
           fi

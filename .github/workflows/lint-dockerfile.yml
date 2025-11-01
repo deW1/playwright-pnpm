@@ -1,4 +1,4 @@
-name: Lint Dockerfile
+name: "🧰 Lint Dockerfile"
 
 on:
   pull_request:
@@ -19,12 +19,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run hadolint on Dockerfile
+      - name: "🔍 Run hadolint on Dockerfile"
         # Run hadolint via the official Docker image to lint the checked-out Dockerfile
         run: |
           docker run --rm -i hadolint/hadolint:latest -f json < Dockerfile > hadolint.json || true
 
-      - name: Prepare hadolint summary
+      - name: "🧾 Prepare hadolint summary"
         id: hadolint
         run: |
           # Count issues (jq is available on ubuntu runners)
@@ -40,7 +40,7 @@ jobs:
           cat hadolint.json 2>/dev/null || true
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Comment hadolint results on PR
+      - name: "💬 Comment hadolint results on PR"
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
@@ -72,5 +72,5 @@ jobs:
       - name: Fail on hadolint issues (pushes to main)
         if: github.event_name == 'push' && steps.hadolint.outputs.issues != '0'
         run: |
-          echo "Hadolint reported ${{ steps.hadolint.outputs.issues }} issues; failing the job."
+          echo "❌ Hadolint reported ${{ steps.hadolint.outputs.issues }} issues; failing the job."
           exit 1
