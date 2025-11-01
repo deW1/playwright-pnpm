@@ -1,5 +1,8 @@
 # playwright-pnpm
 
+[![Build and Push Docker Image](https://github.com/deW1/playwright-pnpm/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/deW1/playwright-pnpm/actions/workflows/docker-publish.yml)
+[![Check for Playwright Updates](https://github.com/deW1/playwright-pnpm/actions/workflows/check-playwright-updates.yml/badge.svg)](https://github.com/deW1/playwright-pnpm/actions/workflows/check-playwright-updates.yml)
+
 Adds pnpm support to Microsoft's Playwright Docker container.
 
 ## Docker Image
