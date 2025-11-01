@@ -59,3 +59,7 @@ docker build -t playwright-pnpm .
 - Published to GitHub Container Registry
 - Automatically checks for new Playwright versions daily
 - Auto-creates PRs when new Playwright versions are available
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
