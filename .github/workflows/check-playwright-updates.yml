@@ -1,8 +1,6 @@
-name: Check for Playwright Updates
-
+name: "🔎 Check for Playwright Updates"
 on:
   schedule:
-    # Run daily at 00:00 UTC
     - cron: '0 0 * * *'
   workflow_dispatch:
 
@@ -12,58 +10,95 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Get current Playwright version from Dockerfile
+      - name: "🔧 Get current Playwright version from Dockerfile"
         id: current
         run: |
-          CURRENT_VERSION=$(grep -oP 'FROM mcr.microsoft.com/playwright:v\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile)
-          
+          # Try to extract from ARG first, fallback to FROM pattern for backwards compatibility
+          CURRENT_VERSION=$(grep -oP 'ARG\s+PLAYWRIGHT_VERSION=\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile || true)
+          if [ -z "$CURRENT_VERSION" ]; then
+            CURRENT_VERSION=$(grep -oP 'FROM mcr.microsoft.com/playwright:v\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile || true)
+          fi
           if [ -z "$CURRENT_VERSION" ]; then
             echo "Error: Could not extract current version from Dockerfile"
             exit 1
           fi
-          
           echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           echo "Current version: $CURRENT_VERSION"
 
-      - name: Get latest Playwright version from MCR
+      - name: "🌐 Get latest Playwright version from MCR"
         id: latest
         run: |
-          # Fetch tags from MCR with error handling
-          TAGS=$(curl -sf "https://mcr.microsoft.com/v2/playwright/tags/list" || echo "")
-          
-          if [ -z "$TAGS" ]; then
-            echo "Error: Failed to fetch tags from Microsoft Container Registry"
-            exit 1
+          set -euo pipefail
+
+          # Ensure jq is available (install if missing)
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "jq not found; installing jq"
+            sudo apt-get update
+            sudo apt-get install -y jq
           fi
-          
-          # Extract stable version tags only (vX.Y.Z format, excluding pre-release tags)
-          LATEST_VERSION=$(echo "$TAGS" | \
-            grep -oP '"v\K[0-9]+\.[0-9]+\.[0-9]+(?=")' | \
-            sort -t. -k1,1n -k2,2n -k3,3n | \
-            tail -1)
-          
+
+          # Fetch tags from MCR with retry and exponential backoff (3 attempts)
+          max_attempts=3
+          attempt=1
+          TAGS_JSON=""
+          until [ $attempt -gt $max_attempts ]; do
+            echo "Fetching tags from MCR (attempt $attempt/$max_attempts)"
+            TAGS_JSON=$(curl -sf "https://mcr.microsoft.com/v2/playwright/tags/list" || true)
+            if [ -n "$TAGS_JSON" ]; then
+              break
+            fi
+            echo "Fetch attempt $attempt failed"
+            if [ $attempt -lt $max_attempts ]; then
+              # exponential backoff: sleep 2^attempt seconds
+              sleep_seconds=$((2 ** attempt))
+              echo "Retrying after ${sleep_seconds}s..."
+              sleep $sleep_seconds
+            fi
+            attempt=$((attempt + 1))
+          done
+
+          if [ -z "$TAGS_JSON" ]; then
+            echo "fetch_succeeded=false" >> $GITHUB_OUTPUT
+            echo "version=" >> $GITHUB_OUTPUT
+            echo "Warning: Failed to fetch tags from Microsoft Container Registry after ${max_attempts} attempts; skipping update check for this run"
+            exit 0
+          fi
+
+          # Parse semantic vX.Y.Z tags, drop leading 'v', sort semver and pick latest
+          LATEST_VERSION=$(echo "$TAGS_JSON" | jq -r '.tags[] | select(test("^v[0-9]+\\.[0-9]+\\.[0-9]+$"))' | sed 's/^v//' | sort -V | tail -n1 || true)
           if [ -z "$LATEST_VERSION" ]; then
-            echo "Error: Could not determine latest version"
-            exit 1
+            echo "fetch_succeeded=false" >> $GITHUB_OUTPUT
+            echo "version=" >> $GITHUB_OUTPUT
+            echo "Warning: Could not determine latest version from MCR response; skipping update check for this run"
+            exit 0
           fi
-          
+
+          echo "fetch_succeeded=true" >> $GITHUB_OUTPUT
           echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
           echo "Latest version: $LATEST_VERSION"
 
-      - name: Compare versions
+      - name: "🔁 Compare versions"
         id: compare
         run: |
           CURRENT="${{ steps.current.outputs.version }}"
           LATEST="${{ steps.latest.outputs.version }}"
-          
+          FETCH_OK="${{ steps.latest.outputs.fetch_succeeded }}"
+
           echo "Current: $CURRENT"
+
+          if [ "$FETCH_OK" != "true" ]; then
+            echo "Latest: (unavailable)"
+            echo "update_needed=false" >> $GITHUB_OUTPUT
+            echo "Note: Could not fetch latest Playwright version; skipping update check this run"
+            exit 0
+          fi
+
           echo "Latest: $LATEST"
-          
+
           if [ "$CURRENT" != "$LATEST" ]; then
             echo "update_needed=true" >> $GITHUB_OUTPUT
             echo "Update needed from $CURRENT to $LATEST"
@@ -72,35 +107,61 @@ jobs:
             echo "No update needed"
           fi
 
-      - name: Update Dockerfile
+      - name: "🛠️ Update Dockerfile"
         if: steps.compare.outputs.update_needed == 'true'
         run: |
           CURRENT="${{ steps.current.outputs.version }}"
           LATEST="${{ steps.latest.outputs.version }}"
-          sed -i "s/playwright:v${CURRENT}/playwright:v${LATEST}/g" Dockerfile
-          
+          if grep -qP 'ARG\s+PLAYWRIGHT_VERSION=\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile; then
+            sed -i "s/ARG PLAYWRIGHT_VERSION=${CURRENT}/ARG PLAYWRIGHT_VERSION=${LATEST}/g" Dockerfile
+          else
+            sed -i "s/playwright:v${CURRENT}/playwright:v${LATEST}/g" Dockerfile
+          fi
           echo "Updated Dockerfile:"
-          grep "FROM" Dockerfile
+          grep -E "^ARG|^FROM" Dockerfile
 
       - name: Create Pull Request
         if: steps.compare.outputs.update_needed == 'true'
+        id: create_pr
         uses: peter-evans/create-pull-request@v6
         with:
           commit-message: "Update Playwright to v${{ steps.latest.outputs.version }}"
           title: "Update Playwright to v${{ steps.latest.outputs.version }}"
           body: |
-            This PR updates the Playwright base image from v${{ steps.current.outputs.version }} to v${{ steps.latest.outputs.version }}.
-            
+            This PR updates the Playwright base image version from v${{ steps.current.outputs.version }} to v${{ steps.latest.outputs.version }}.
+
             ## Changes
-            - Updated `FROM` statement in Dockerfile to use `mcr.microsoft.com/playwright:v${{ steps.latest.outputs.version }}`
-            
+            - Updated `ARG PLAYWRIGHT_VERSION` in Dockerfile to use `${{ steps.latest.outputs.version }}`
+
             ## Notes
             - This PR was automatically created by the check-playwright-updates workflow
             - Once merged, the docker-publish workflow will build and push the new image to ghcr.io
-            
+
             Please review and merge if the changes look correct.
           branch: update-playwright-v${{ steps.latest.outputs.version }}
           delete-branch: true
           labels: |
             dependencies
             automated
+
+      - name: Write status summary
+        if: always()
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          LATEST="${{ steps.latest.outputs.version }}"
+          UPDATE_NEEDED="${{ steps.compare.outputs.update_needed }}"
+          echo "## Playwright update check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔁 Current: **$CURRENT**" >> $GITHUB_STEP_SUMMARY
+          echo "- 🌐 Latest: **$LATEST**" >> $GITHUB_STEP_SUMMARY
+          if [ "$UPDATE_NEEDED" = "true" ]; then
+            echo "- ⚠️ Update needed: **Yes**" >> $GITHUB_STEP_SUMMARY
+            PR_URL="${{ steps.create_pr.outputs.pull-request-url || '' }}"
+            if [ -n "$PR_URL" ]; then
+              echo "- Pull request created: ${PR_URL}" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- Pull request created: *(no URL available from create-pr step)*" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "- ✅ Update needed: **No**" >> $GITHUB_STEP_SUMMARY
+          fi

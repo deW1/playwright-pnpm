@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: "🐳 Build and Push Docker Image"
 
 on:
   push:
@@ -23,30 +23,33 @@ jobs:
       packages: write
 
     steps:
-      - name: Checkout repository
+      - name: "📥 Checkout repository"
         uses: actions/checkout@v4
 
-      - name: Get Playwright version from Dockerfile
+      - name: "🔧 Get Playwright version from Dockerfile"
         id: playwright-version
         run: |
-          VERSION=$(grep -oP 'FROM mcr.microsoft.com/playwright:v\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile)
-          
+          # Prefer ARG if present, otherwise fall back to FROM
+          VERSION=$(grep -oP 'ARG\s+PLAYWRIGHT_VERSION=\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile || true)
+          if [ -z "$VERSION" ]; then
+            VERSION=$(grep -oP 'FROM mcr.microsoft.com/playwright:v\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile || true)
+          fi
           if [ -z "$VERSION" ]; then
             echo "Error: Could not extract Playwright version from Dockerfile"
             exit 1
           fi
-          
+
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Playwright version: $VERSION"
 
-      - name: Log in to the Container registry
+      - name: "🔐 Log in to the Container registry"
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata (tags, labels) for Docker
+      - name: "🏷️ Extract metadata (tags, labels) for Docker"
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -60,10 +63,38 @@ jobs:
             type=raw,value=latest,enable={{is_default_branch}}
             type=raw,value=pw-${{ steps.playwright-version.outputs.version }},enable={{is_default_branch}}
 
-      - name: Build and push Docker image
+      - id: build
+        name: "🧱 Build and push Docker image"
         uses: docker/build-push-action@v5
         with:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            PLAYWRIGHT_VERSION=${{ steps.playwright-version.outputs.version }}
+            IMAGE_SOURCE=${{ github.server_url }}/${{ github.repository }}
+
+      - name: "📝 Create job summary"
+        if: always()
+        run: |
+          pw_version="${{ steps.playwright-version.outputs.version }}"
+          tags="${{ steps.meta.outputs.tags }}"
+          labels="${{ steps.meta.outputs.labels }}"
+          digest="${{ steps.build.outputs.digest || '' }}"
+          if [ -z "$pw_version" ]; then pw_version="n/a"; fi
+          if [ -z "$tags" ]; then tags="n/a"; fi
+          if [ -z "$labels" ]; then labels="n/a"; fi
+
+          echo "## 🐳 Build and Push Docker Image — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- 📦 Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔁 Playwright version: $pw_version" >> $GITHUB_STEP_SUMMARY
+          echo "- 🏷️ Tags: $tags" >> $GITHUB_STEP_SUMMARY
+          echo "- 🏷️ Labels: $labels" >> $GITHUB_STEP_SUMMARY
+          if [ -n "$digest" ]; then
+            echo "- 🆔 Image digest: $digest" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "- ✅ Pushed: ${{ github.event_name != 'pull_request' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
