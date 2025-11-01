@@ -21,8 +21,18 @@ jobs:
 
       - name: "🔍 Run hadolint on Dockerfile"
         # Run hadolint via the official Docker image to lint the checked-out Dockerfile
+        # Use a bind mount and run the hadolint binary explicitly. Pin the hadolint image for reproducibility.
         run: |
-          docker run --rm -i hadolint/hadolint:latest -f json < Dockerfile > hadolint.json || true
+          HADOLINT_IMAGE=hadolint/hadolint:v2.14.0
+          echo "Using hadolint image: ${HADOLINT_IMAGE}"
+          # Mount the repo workspace into /work so the container can read the Dockerfile
+          # Run hadolint but capture its exit code so the step doesn't fail immediately.
+          # This allows us to always run the summary/comment steps and fail later based on the exit code.
+          set +e
+          docker run --rm -v "$GITHUB_WORKSPACE":/work -w /work ${HADOLINT_IMAGE} hadolint -f json Dockerfile > hadolint.json
+          HADOLINT_EXIT_CODE=$?
+          set -e
+          echo "$HADOLINT_EXIT_CODE" > hadolint_exit_code
 
       - name: "🧾 Prepare hadolint summary"
         id: hadolint
@@ -69,8 +79,21 @@ jobs:
             curl -s -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" -d "$JSON_BODY" "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" >/dev/null
           fi
 
-      - name: Fail on hadolint issues (pushes to main)
-        if: github.event_name == 'push' && steps.hadolint.outputs.issues != '0'
+      - name: "⚖️ Enforce hadolint result"
+        if: always()
         run: |
-          echo "❌ Hadolint reported ${{ steps.hadolint.outputs.issues }} issues; failing the job."
-          exit 1
+          # Decide whether to fail the job based on hadolint exit code and event type
+          EXIT_CODE=$(cat hadolint_exit_code 2>/dev/null || echo 0)
+          echo "hadolint exit code: $EXIT_CODE"
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            if [ "${{ github.event_name }}" = "push" ]; then
+              echo "❌ hadolint failed (exit $EXIT_CODE) — failing the job as this is a push to main"
+              exit $EXIT_CODE
+            else
+              echo "⚠️ hadolint failed (exit $EXIT_CODE) — not failing the job for PR runs"
+              exit 0
+            fi
+          else
+            echo "✅ hadolint passed (exit 0)"
+            exit 0
+          fi
