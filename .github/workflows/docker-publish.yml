@@ -67,3 +67,23 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Create job summary
+        if: always()
+        run: |
+          pw_version="${{ steps.playwright-version.outputs.version }}"
+          tags="${{ steps.meta.outputs.tags }}"
+          labels="${{ steps.meta.outputs.labels }}"
+          if [ -z "$pw_version" ]; then pw_version="n/a"; fi
+          if [ -z "$tags" ]; then tags="n/a"; fi
+          if [ -z "$labels" ]; then labels="n/a"; fi
+
+          echo "## Build and Push Docker Image — ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Playwright version: $pw_version" >> $GITHUB_STEP_SUMMARY
+          echo "- Tags: $tags" >> $GITHUB_STEP_SUMMARY
+          echo "- Labels: $labels" >> $GITHUB_STEP_SUMMARY
+          echo "- Pushed: ${{ github.event_name != 'pull_request' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
