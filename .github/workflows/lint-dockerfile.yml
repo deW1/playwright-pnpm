@@ -1,0 +1,25 @@
+name: Lint Dockerfile
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+  push:
+    branches:
+      - main
+    paths:
+      - 'Dockerfile'
+  workflow_dispatch:
+
+jobs:
+  hadolint:
+    name: Run hadolint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run hadolint on Dockerfile
+        # Run hadolint via the official Docker image to lint the checked-out Dockerfile
+        run: |
+          docker run --rm -i hadolint/hadolint:latest < Dockerfile
