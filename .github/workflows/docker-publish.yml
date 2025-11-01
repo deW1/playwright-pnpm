@@ -73,6 +73,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             PLAYWRIGHT_VERSION=${{ steps.playwright-version.outputs.version }}
+            IMAGE_SOURCE=${{ github.server_url }}/${{ github.repository }}
 
       - name: "📝 Create job summary"
         if: always()
