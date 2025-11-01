@@ -14,6 +14,9 @@ on:
 jobs:
   hadolint:
     name: Run hadolint
+    permissions:
+      contents: read
+      issues: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -51,7 +54,7 @@ jobs:
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: "💬 Comment hadolint results on PR"
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         run: |
           set -euo pipefail
           PR_NUMBER=${{ github.event.pull_request.number }}
@@ -72,12 +75,27 @@ jobs:
           EXISTING_ID=$(curl -s -H "Authorization: token $TOKEN" "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" | jq -r --arg marker "$MARKER" '.[] | select(.body|contains($marker)) | .id' | head -n1 || true)
 
           if [ -n "$EXISTING_ID" ] && [ "$EXISTING_ID" != "null" ]; then
-            # Update existing comment
-            curl -s -X PATCH -H "Authorization: token $TOKEN" -H "Content-Type: application/json" -d "$JSON_BODY" "https://api.github.com/repos/$REPO/issues/comments/$EXISTING_ID" >/dev/null
+            # Update existing comment and log response
+            RESP=$(curl -s -w "\n%{http_code}" -X PATCH -H "Authorization: token $TOKEN" -H "Content-Type: application/json" -d "$JSON_BODY" "https://api.github.com/repos/$REPO/issues/comments/$EXISTING_ID")
+            echo "Update comment response: $RESP"
           else
-            # Create a new comment
-            curl -s -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" -d "$JSON_BODY" "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments" >/dev/null
+            # Create a new comment and log response
+            RESP=$(curl -s -w "\n%{http_code}" -X POST -H "Authorization: token $TOKEN" -H "Content-Type: application/json" -d "$JSON_BODY" "https://api.github.com/repos/$REPO/issues/$PR_NUMBER/comments")
+            echo "Create comment response: $RESP"
           fi
+
+      - name: "📦 Upload hadolint report (forked PRs)"
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        uses: actions/upload-artifact@v4
+        with:
+          name: hadolint-report-${{ github.run_id }}
+          path: hadolint.json
+
+      - name: "ℹ️ Note about forked PR comment"
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        run: |
+          echo "This PR originates from a fork; the workflow cannot post comments using GITHUB_TOKEN for forked PRs."
+          echo "Uploaded hadolint.json as an artifact named hadolint-report-${{ github.run_id }}."
 
       - name: "⚖️ Enforce hadolint result"
         if: always()
