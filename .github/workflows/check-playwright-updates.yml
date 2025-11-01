@@ -21,16 +21,37 @@ jobs:
         id: current
         run: |
           CURRENT_VERSION=$(grep -oP 'FROM mcr.microsoft.com/playwright:v\K[0-9]+\.[0-9]+\.[0-9]+' Dockerfile)
+          
+          if [ -z "$CURRENT_VERSION" ]; then
+            echo "Error: Could not extract current version from Dockerfile"
+            exit 1
+          fi
+          
           echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
           echo "Current version: $CURRENT_VERSION"
 
       - name: Get latest Playwright version from MCR
         id: latest
         run: |
-          LATEST_VERSION=$(curl -s "https://mcr.microsoft.com/v2/playwright/tags/list" | \
-            grep -oP '"v\K[0-9]+\.[0-9]+\.[0-9]+' | \
-            sort -V | \
+          # Fetch tags from MCR with error handling
+          TAGS=$(curl -sf "https://mcr.microsoft.com/v2/playwright/tags/list" || echo "")
+          
+          if [ -z "$TAGS" ]; then
+            echo "Error: Failed to fetch tags from Microsoft Container Registry"
+            exit 1
+          fi
+          
+          # Extract stable version tags only (vX.Y.Z format, excluding pre-release tags)
+          LATEST_VERSION=$(echo "$TAGS" | \
+            grep -oP '"v\K[0-9]+\.[0-9]+\.[0-9]+(?=")' | \
+            sort -t. -k1,1n -k2,2n -k3,3n | \
             tail -1)
+          
+          if [ -z "$LATEST_VERSION" ]; then
+            echo "Error: Could not determine latest version"
+            exit 1
+          fi
+          
           echo "version=$LATEST_VERSION" >> $GITHUB_OUTPUT
           echo "Latest version: $LATEST_VERSION"
 
