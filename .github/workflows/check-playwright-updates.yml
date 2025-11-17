@@ -123,7 +123,7 @@ jobs:
       - name: Create Pull Request
         if: steps.compare.outputs.update_needed == 'true'
         id: create_pr
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v7
         with:
           commit-message: "Update Playwright to v${{ steps.latest.outputs.version }}"
           title: "Update Playwright to v${{ steps.latest.outputs.version }}"
