@@ -86,7 +86,7 @@ jobs:
 
       - name: "📦 Upload hadolint report (forked PRs)"
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: hadolint-report-${{ github.run_id }}
           path: hadolint.json
