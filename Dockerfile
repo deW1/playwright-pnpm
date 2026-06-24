@@ -1,4 +1,4 @@
-ARG PLAYWRIGHT_VERSION=1.61.0
+ARG PLAYWRIGHT_VERSION=1.61.1
 FROM mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}
 
 # Re-declare ARGs after FROM so they are available during the rest of the build
