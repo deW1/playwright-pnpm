@@ -5,8 +5,10 @@ FROM mcr.microsoft.com/playwright:v${PLAYWRIGHT_VERSION}
 ARG PLAYWRIGHT_VERSION
 ARG IMAGE_SOURCE="https://github.com/deW1/playwright-pnpm"
 
-# Install pnpm globally
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Install Corepack explicitly; it is not guaranteed to be present in the base image.
+RUN npm install --global corepack \
+    && corepack enable \
+    && corepack prepare pnpm@latest --activate
 
 # Use build args in labels (avoid undefined-var warnings by passing IMAGE_SOURCE and redeclaring PLAYWRIGHT_VERSION)
 LABEL org.opencontainers.image.source="${IMAGE_SOURCE}"
